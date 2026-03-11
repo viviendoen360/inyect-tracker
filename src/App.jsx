@@ -6,21 +6,28 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 
-// --- INICIALIZACIÓN SEGURA ---
-let app, auth, db, appId;
-try {
-  if (typeof __firebase_config !== 'undefined') {
-   const firebaseConfig = {
+// --- CONFIGURACIÓN DE FIREBASE ---
+// Reemplaza los textos entre comillas con las claves de tu proyecto de Firebase
+const firebaseConfig = {
   apiKey: "AIzaSyAFQMIxRR2SsRgzOwOYo1dtT69PZPY9dGQ",
   authDomain: "inyecttracker.firebaseapp.com",
   projectId: "inyecttracker",
   storageBucket: "inyecttracker.firebasestorage.app",
   messagingSenderId: "408973989419",
   appId: "1:408973989419:web:e062043c54590eae88fc6e"
-  }
-} catch (error) {
-  console.error("Ejecutando en modo local sin base de datos.");
-}
+};
+
+// --- INICIALIZACIÓN ---
+// Esta lógica detectará si estás en Vercel (usando tus claves) o en la vista previa
+const activeConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : firebaseConfig;
+
+const app = initializeApp(activeConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// Sanitizamos el appId para la ruta de la base de datos
+const rawAppId = typeof __app_id !== 'undefined' ? __app_id : (activeConfig.projectId || 'default-app-id');
+const safeAppId = rawAppId.replace(/\//g, '_');
 
 export default function App() {
   // --- ESTADO DE LA APLICACIÓN ---
@@ -30,7 +37,7 @@ export default function App() {
   const formattedLastInj = simulatedLastInjection.toISOString().split('T')[0];
 
   const [user, setUser] = useState(null);
-  const [isLoaded, setIsLoaded] = useState(!auth); // Si no hay auth, cargamos directo
+  const [isLoaded, setIsLoaded] = useState(!auth);
   const [isSyncing, setIsSyncing] = useState(false);
 
   const [inventory, setInventory] = useState(4);
@@ -45,9 +52,6 @@ export default function App() {
   const [isEditingInterval, setIsEditingInterval] = useState(false);
   const [addAmount, setAddAmount] = useState('');
   const [showConfirm, setShowConfirm] = useState(false);
-
-  // Sanitizamos el appId para asegurarnos que no contenga "/" y arruine la ruta de Firestore
-  const safeAppId = appId ? appId.replace(/\//g, '_') : 'default-app-id';
 
   // --- CONEXIÓN A FIREBASE ---
   
@@ -73,7 +77,6 @@ export default function App() {
   useEffect(() => {
     if (!user || !db) return;
 
-    // Usamos la ruta segura designada (con safeAppId para evitar el error de segmentos impares)
     const docRef = doc(db, 'artifacts', safeAppId, 'users', user.uid, 'appData', 'state');
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -110,10 +113,9 @@ export default function App() {
   // --- LÓGICA Y CÁLCULOS ---
 
   const calculateNextInjection = (lastDateStr, interval) => {
-    // Protección contra fechas inválidas
     const baseStr = lastDateStr || new Date().toISOString().split('T')[0];
     const date = new Date(baseStr + 'T12:00:00'); 
-    if (isNaN(date.getTime())) return new Date(); // Fallback si falla
+    if (isNaN(date.getTime())) return new Date(); 
     date.setDate(date.getDate() + Number(interval || 9));
     return date;
   };
@@ -229,7 +231,6 @@ export default function App() {
     syncData({ nextLeg: toggledLeg });
   };
 
-  // --- FORMATEO DE FECHAS ---
   const formatDate = (date) => {
     if (isNaN(date.getTime())) return "Fecha inválida";
     return date.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -260,7 +261,6 @@ export default function App() {
             <h1 className="text-xl font-bold tracking-wide">InyectTracker</h1>
           </div>
           <div className="flex items-center gap-2 text-xs font-medium bg-blue-700/50 px-2.5 py-1.5 rounded-full">
-            {/* Reemplazamos los Fragmentos (<></>) por <span> para evitar problemas de compatibilidad en React */}
             {isSyncing && (
               <span className="flex items-center gap-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Guardando...</span>
             )}
