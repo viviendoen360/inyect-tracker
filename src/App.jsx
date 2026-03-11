@@ -10,11 +10,13 @@ import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 let app, auth, db, appId;
 try {
   if (typeof __firebase_config !== 'undefined') {
-    const firebaseConfig = JSON.parse(__firebase_config);
-    app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    db = getFirestore(app);
-    appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+   const firebaseConfig = {
+  apiKey: "AIzaSyAFQMIxRR2SsRgzOwOYo1dtT69PZPY9dGQ",
+  authDomain: "inyecttracker.firebaseapp.com",
+  projectId: "inyecttracker",
+  storageBucket: "inyecttracker.firebasestorage.app",
+  messagingSenderId: "408973989419",
+  appId: "1:408973989419:web:e062043c54590eae88fc6e"
   }
 } catch (error) {
   console.error("Ejecutando en modo local sin base de datos.");
