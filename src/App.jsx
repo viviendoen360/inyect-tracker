@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Syringe, CalendarDays, PackagePlus, Activity, CheckCircle2, AlertCircle, Clock, Plus, History, Settings2, Cloud, CloudOff, Loader2 } from 'lucide-react';
+import { Syringe, CalendarDays, PackagePlus, Activity, CheckCircle2, AlertCircle, Clock, Plus, History, Settings2, Cloud, CloudOff, Loader2, Undo2, X } from 'lucide-react';
 
 // --- IMPORTACIONES DE FIREBASE ---
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 
-// --- CONFIGURACIÓN DE FIREBASE ---
-// Reemplaza los textos entre comillas con las claves de tu proyecto de Firebase
+// --- CONFIGURACIÓN DE FIREBASE (Con tus credenciales reales) ---
 const firebaseConfig = {
   apiKey: "AIzaSyAFQMIxRR2SsRgzOwOYo1dtT69PZPY9dGQ",
   authDomain: "inyecttracker.firebaseapp.com",
@@ -18,7 +17,6 @@ const firebaseConfig = {
 };
 
 // --- INICIALIZACIÓN ---
-// Esta lógica detectará si estás en Vercel (usando tus claves) o en la vista previa
 const activeConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : firebaseConfig;
 
 const app = initializeApp(activeConfig);
@@ -52,6 +50,10 @@ export default function App() {
   const [isEditingInterval, setIsEditingInterval] = useState(false);
   const [addAmount, setAddAmount] = useState('');
   const [showConfirm, setShowConfirm] = useState(false);
+  
+  // Nuevos estados para errores y deshacer
+  const [errorMsg, setErrorMsg] = useState('');
+  const [undoConfirmId, setUndoConfirmId] = useState(null);
 
   // --- CONEXIÓN A FIREBASE ---
   
@@ -149,7 +151,8 @@ export default function App() {
 
   const handleApplyInjection = () => {
     if (inventory <= 0) {
-      alert("No tienes inyecciones en el inventario. Por favor agrega más.");
+      setErrorMsg("No tienes inyecciones en el inventario. Por favor agrega más en la sección de ingresos.");
+      setShowConfirm(false);
       return;
     }
 
@@ -173,6 +176,7 @@ export default function App() {
     setLastInjectionDate(todayStr);
     setNextLeg(toggledLeg);
     setShowConfirm(false);
+    setErrorMsg('');
 
     syncData({
       inventory: newInventory,
@@ -204,10 +208,54 @@ export default function App() {
     setKardex(newKardex);
     setInventory(newInventory);
     setAddAmount('');
+    setErrorMsg('');
 
     syncData({
       inventory: newInventory,
       kardex: newKardex
+    });
+  };
+
+  // Función para DESHACER el último movimiento
+  const handleConfirmUndo = () => {
+    if (kardex.length === 0) return;
+
+    const lastAction = kardex[0]; 
+    const newKardex = kardex.slice(1); 
+    
+    let newInventory = inventory;
+    let newLastInjDate = lastInjectionDate;
+    let newNextLeg = nextLeg;
+
+    if (lastAction.type === 'Aplicación') {
+      newInventory = inventory + 1; 
+      newNextLeg = nextLeg === 'Derecha' ? 'Izquierda' : 'Derecha'; 
+      
+      const prevApp = newKardex.find(log => log.type === 'Aplicación');
+      if (prevApp) {
+        newLastInjDate = prevApp.date;
+      } else {
+        const fallbackDate = new Date(lastAction.date + 'T12:00:00');
+        fallbackDate.setDate(fallbackDate.getDate() - injectionInterval);
+        newLastInjDate = fallbackDate.toISOString().split('T')[0];
+      }
+    } else if (lastAction.type === 'Ingreso') {
+      newInventory = inventory - lastAction.qty; 
+      if (newInventory < 0) newInventory = 0; 
+    }
+
+    setKardex(newKardex);
+    setInventory(newInventory);
+    setLastInjectionDate(newLastInjDate);
+    setNextLeg(newNextLeg);
+    setUndoConfirmId(null);
+    setErrorMsg('');
+
+    syncData({
+      kardex: newKardex,
+      inventory: newInventory,
+      lastInjectionDate: newLastInjDate,
+      nextLeg: newNextLeg
     });
   };
 
@@ -276,6 +324,19 @@ export default function App() {
 
       <main className="max-w-md mx-auto p-4 space-y-6 mt-2">
         
+        {/* MENSAJE DE ERROR */}
+        {errorMsg && (
+          <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-xl shadow-sm flex items-start justify-between">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-red-700 font-medium">{errorMsg}</p>
+            </div>
+            <button onClick={() => setErrorMsg('')} className="text-red-400 hover:text-red-600">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        )}
+
         {/* Próxima Inyección */}
         <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="p-5 border-b border-slate-100 relative">
@@ -418,23 +479,57 @@ export default function App() {
             {kardex.length === 0 ? (
               <p className="text-sm text-slate-400 text-center py-4">No hay movimientos aún.</p>
             ) : (
-              kardex.map((log) => (
-                <div key={log.id} className="flex justify-between items-center p-3 rounded-xl border border-slate-100 bg-slate-50/50">
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-full ${log.qty > 0 ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-600'}`}>
-                      {log.qty > 0 ? <PackagePlus className="w-4 h-4" /> : <Syringe className="w-4 h-4" />}
+              kardex.map((log, index) => (
+                <div key={log.id} className="flex flex-col p-3 rounded-xl border border-slate-100 bg-slate-50/50">
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2 rounded-full ${log.qty > 0 ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-600'}`}>
+                        {log.qty > 0 ? <PackagePlus className="w-4 h-4" /> : <Syringe className="w-4 h-4" />}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800">{log.type}</p>
+                        <p className="text-xs text-slate-500">{formatShortDate(log.date)} • {log.detail}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-semibold text-slate-800">{log.type}</p>
-                      <p className="text-xs text-slate-500">{formatShortDate(log.date)} • {log.detail}</p>
+                    
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <p className={`text-sm font-bold ${log.qty > 0 ? 'text-emerald-600' : 'text-slate-700'}`}>
+                          {log.qty > 0 ? '+' : ''}{log.qty}
+                        </p>
+                        <p className="text-[10px] text-slate-400 uppercase tracking-wide">Stock: {log.balance}</p>
+                      </div>
+                      
+                      {/* BOTÓN DESHACER (Solo aparece en el primer elemento del historial) */}
+                      {index === 0 && undoConfirmId !== log.id && (
+                        <button 
+                          onClick={() => setUndoConfirmId(log.id)} 
+                          className="p-1.5 bg-white border border-slate-200 text-slate-400 rounded-lg hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors"
+                          title="Deshacer último movimiento"
+                        >
+                          <Undo2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className={`text-sm font-bold ${log.qty > 0 ? 'text-emerald-600' : 'text-slate-700'}`}>
-                      {log.qty > 0 ? '+' : ''}{log.qty}
-                    </p>
-                    <p className="text-[10px] text-slate-400 uppercase tracking-wide">Stock: {log.balance}</p>
-                  </div>
+
+                  {/* Confirmación de Deshacer */}
+                  {index === 0 && undoConfirmId === log.id && (
+                    <div className="mt-3 pt-3 border-t border-slate-200 flex items-center justify-between bg-red-50 p-2 rounded-lg">
+                      <span className="text-xs font-medium text-red-600 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5" /> ¿Revertir movimiento?
+                      </span>
+                      <div className="flex gap-2">
+                        <button onClick={() => setUndoConfirmId(null)} className="text-xs px-3 py-1.5 bg-white border border-slate-300 rounded-md font-medium text-slate-600 hover:bg-slate-100">
+                          Cancelar
+                        </button>
+                        <button onClick={handleConfirmUndo} className="text-xs px-3 py-1.5 bg-red-500 text-white rounded-md font-medium hover:bg-red-600">
+                          Sí, Deshacer
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                 </div>
               ))
             )}
@@ -445,3 +540,5 @@ export default function App() {
     </div>
   );
 }
+
+
