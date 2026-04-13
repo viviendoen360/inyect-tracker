@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Syringe, CalendarDays, PackagePlus, Activity, CheckCircle2, AlertCircle, Clock, Plus, History, Settings2, Cloud, CloudOff, Loader2, Undo2, X } from 'lucide-react';
+import { Syringe, CalendarDays, PackagePlus, Activity, CheckCircle2, AlertCircle, Clock, Plus, History, Settings2, Cloud, CloudOff, Loader2, Undo2, X, CalendarPlus } from 'lucide-react';
 
 // --- IMPORTACIONES DE FIREBASE ---
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 
-// --- CONFIGURACIÓN DE FIREBASE (Con tus credenciales reales) ---
+// --- CONFIGURACIÓN DE FIREBASE (Con tus credenciales) ---
 const firebaseConfig = {
   apiKey: "AIzaSyAFQMIxRR2SsRgzOwOYo1dtT69PZPY9dGQ",
   authDomain: "inyecttracker.firebaseapp.com",
@@ -51,7 +51,6 @@ export default function App() {
   const [addAmount, setAddAmount] = useState('');
   const [showConfirm, setShowConfirm] = useState(false);
   
-  // Nuevos estados para errores y deshacer
   const [errorMsg, setErrorMsg] = useState('');
   const [undoConfirmId, setUndoConfirmId] = useState(null);
 
@@ -112,7 +111,7 @@ export default function App() {
     }
   };
 
-  // --- LÓGICA Y CÁLCULOS ---
+  // --- LÓGICA Y CÁLCULOS PRINCIPALES ---
 
   const calculateNextInjection = (lastDateStr, interval) => {
     const baseStr = lastDateStr || new Date().toISOString().split('T')[0];
@@ -147,7 +146,38 @@ export default function App() {
     statusText = `Mañana`;
   }
 
-  // --- FUNCIONES DE ACCIÓN ---
+  // --- CÁLCULO: ¿HASTA CUÁNDO ALCANZA EL INVENTARIO? ---
+  let depletionDateText = "Sin inventario";
+  if (inventory > 0) {
+    const depletionDate = new Date(nextInjectionDate);
+    // Se calcula sumando a la próxima inyección: (cantidad_restante - 1) * intervalo
+    // Porque la primera dosis ya está asignada a la 'nextInjectionDate'
+    depletionDate.setDate(depletionDate.getDate() + ((inventory - 1) * injectionInterval));
+    depletionDateText = depletionDate.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+  }
+
+  // --- FUNCIÓN: AGENDAR EN GOOGLE CALENDAR ---
+  const handleAddToCalendar = () => {
+    // Formatear fechas para Google Calendar (YYYYMMDD) - Evento de todo el día
+    const pad = (n) => n < 10 ? '0' + n : n;
+    const startStr = `${nextInjectionDate.getFullYear()}${pad(nextInjectionDate.getMonth() + 1)}${pad(nextInjectionDate.getDate())}`;
+    
+    // El evento de todo el día debe terminar al día siguiente
+    const endDate = new Date(nextInjectionDate);
+    endDate.setDate(endDate.getDate() + 1);
+    const endStr = `${endDate.getFullYear()}${pad(endDate.getMonth() + 1)}${pad(endDate.getDate())}`;
+
+    const title = encodeURIComponent(`💉 Inyección: Pierna ${nextLeg}`);
+    const details = encodeURIComponent(`Recuerda registrar la inyección en tu app InyectTracker.\n\nToca en la: Pierna ${nextLeg}.`);
+    
+    // Generar enlace
+    const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startStr}/${endStr}&details=${details}`;
+    
+    // Abrir en nueva pestaña (En el celular abrirá la app o la web)
+    window.open(url, '_blank');
+  };
+
+  // --- FUNCIONES DE ACCIÓN SECUNDARIAS ---
 
   const handleApplyInjection = () => {
     if (inventory <= 0) {
@@ -216,7 +246,6 @@ export default function App() {
     });
   };
 
-  // Función para DESHACER el último movimiento
   const handleConfirmUndo = () => {
     if (kardex.length === 0) return;
 
@@ -374,9 +403,17 @@ export default function App() {
                 {statusText}
               </div>
             </div>
-            <div className="text-slate-500">
+            <div className="text-slate-500 mb-2">
               {formatDate(nextInjectionDate)}
             </div>
+
+            {/* BOTÓN NUEVO: AGENDAR EN GOOGLE CALENDAR */}
+            <button 
+              onClick={handleAddToCalendar}
+              className="mt-4 w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-2.5 rounded-xl text-sm flex justify-center items-center gap-2 transition-colors border border-slate-200"
+            >
+              <CalendarPlus className="w-4 h-4 text-blue-600" /> Agendar en Google Calendar
+            </button>
 
             <div className="mt-6 flex items-center bg-slate-50 p-4 rounded-xl border border-slate-100">
               <div className="bg-blue-100 p-3 rounded-full mr-4">
@@ -419,7 +456,7 @@ export default function App() {
         </section>
 
         <div className="grid grid-cols-2 gap-4">
-          {/* INVENTARIO */}
+          {/* INVENTARIO CON FECHA DE ALCANCE */}
           <section className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col justify-between">
             <div>
               <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
@@ -430,9 +467,12 @@ export default function App() {
                 <span className="text-sm text-slate-500 font-medium">dosis</span>
               </div>
             </div>
-            {inventory <= 1 && (
-              <p className="text-xs text-red-500 mt-2 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Inventario bajo</p>
-            )}
+            
+            {/* NUEVA FECHA HASTA CUANDO ALCANZAN LAS DOSIS */}
+            <div className="mt-3 pt-3 border-t border-slate-100">
+               <p className="text-[10px] text-slate-400 uppercase tracking-wide font-semibold">Alcanzan hasta</p>
+               <p className="text-sm font-bold text-slate-700 capitalize mt-0.5">{depletionDateText}</p>
+            </div>
           </section>
 
           {/* CITA MÉDICA */}
@@ -500,7 +540,7 @@ export default function App() {
                         <p className="text-[10px] text-slate-400 uppercase tracking-wide">Stock: {log.balance}</p>
                       </div>
                       
-                      {/* BOTÓN DESHACER (Solo aparece en el primer elemento del historial) */}
+                      {/* BOTÓN DESHACER */}
                       {index === 0 && undoConfirmId !== log.id && (
                         <button 
                           onClick={() => setUndoConfirmId(log.id)} 
@@ -540,5 +580,3 @@ export default function App() {
     </div>
   );
 }
-
-
