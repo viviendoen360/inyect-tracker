@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Syringe, CalendarDays, PackagePlus, Activity, CheckCircle2, AlertCircle, Clock, Plus, History, Settings2, Cloud, CloudOff, Loader2, Undo2, X, CalendarPlus } from 'lucide-react';
+import { Syringe, CalendarDays, PackagePlus, Activity, CheckCircle2, AlertCircle, Clock, Plus, History, Settings2, Cloud, CloudOff, Loader2, Undo2, X, CalendarPlus, LogOut, Mail, Lock } from 'lucide-react';
 
 // --- IMPORTACIONES DE FIREBASE ---
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 
-// --- CONFIGURACIÓN DE FIREBASE (Con tus credenciales) ---
+// --- CONFIGURACIÓN DE FIREBASE ---
 const firebaseConfig = {
   apiKey: "AIzaSyAFQMIxRR2SsRgzOwOYo1dtT69PZPY9dGQ",
   authDomain: "inyecttracker.firebaseapp.com",
@@ -23,29 +23,133 @@ const app = initializeApp(activeConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Sanitizamos el appId para la ruta de la base de datos
 const rawAppId = typeof __app_id !== 'undefined' ? __app_id : (activeConfig.projectId || 'default-app-id');
 const safeAppId = rawAppId.replace(/\//g, '_');
 
+// --- COMPONENTE DE LOGIN / REGISTRO ---
+const LoginScreen = ({ auth }) => {
+  const [isLogin, setIsLogin] = useState(true);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleAuth = async (e) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setErrorMsg('');
+
+    try {
+      if (isLogin) {
+        await signInWithEmailAndPassword(auth, email, password);
+      } else {
+        await createUserWithEmailAndPassword(auth, email, password);
+      }
+    } catch (error) {
+      console.error("Error de autenticación:", error);
+      // Mensajes de error más amigables
+      if (error.code === 'auth/invalid-email') setErrorMsg('El formato del correo no es válido.');
+      else if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') setErrorMsg('Correo o contraseña incorrectos.');
+      else if (error.code === 'auth/email-already-in-use') setErrorMsg('Este correo ya está registrado.');
+      else if (error.code === 'auth/weak-password') setErrorMsg('La contraseña debe tener al menos 6 caracteres.');
+      else setErrorMsg('Ocurrió un error. Inténtalo de nuevo.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+      <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 w-full max-w-md">
+        <div className="flex flex-col items-center mb-8">
+          <div className="bg-blue-600 p-4 rounded-full mb-4 shadow-md">
+            <Activity className="w-8 h-8 text-white" />
+          </div>
+          <h1 className="text-2xl font-bold text-slate-800">InyectTracker</h1>
+          <p className="text-slate-500 text-sm mt-1">Gestiona tus inyecciones de forma segura</p>
+        </div>
+
+        {errorMsg && (
+          <div className="bg-red-50 border-l-4 border-red-500 p-3 rounded-r-lg mb-6 flex items-start gap-2 text-sm text-red-700">
+            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            <p>{errorMsg}</p>
+          </div>
+        )}
+
+        <form onSubmit={handleAuth} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Correo Electrónico</label>
+            <div className="relative">
+              <Mail className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input 
+                type="email" 
+                value={email} 
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 pl-10 pr-4 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors"
+                placeholder="tu@correo.com"
+                required
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Contraseña</label>
+            <div className="relative">
+              <Lock className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input 
+                type="password" 
+                value={password} 
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 pl-10 pr-4 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors"
+                placeholder="••••••"
+                required
+                minLength="6"
+              />
+            </div>
+          </div>
+
+          <button 
+            type="submit" 
+            disabled={isLoading}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 rounded-xl shadow-sm transition-colors flex justify-center items-center gap-2 mt-2 disabled:opacity-70"
+          >
+            {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : (isLogin ? 'Iniciar Sesión' : 'Crear Cuenta')}
+          </button>
+        </form>
+
+        <div className="mt-8 text-center">
+          <p className="text-sm text-slate-500">
+            {isLogin ? '¿No tienes una cuenta?' : '¿Ya tienes una cuenta?'}
+          </p>
+          <button 
+            onClick={() => { setIsLogin(!isLogin); setErrorMsg(''); }}
+            className="text-blue-600 font-semibold text-sm mt-1 hover:text-blue-800 transition-colors"
+          >
+            {isLogin ? 'Regístrate aquí' : 'Inicia sesión aquí'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- APLICACIÓN PRINCIPAL ---
 export default function App() {
-  // --- ESTADO DE LA APLICACIÓN ---
   const today = new Date();
   const simulatedLastInjection = new Date(today);
   simulatedLastInjection.setDate(today.getDate() - 9);
   const formattedLastInj = simulatedLastInjection.toISOString().split('T')[0];
 
   const [user, setUser] = useState(null);
-  const [isLoaded, setIsLoaded] = useState(!auth);
+  const [isLoaded, setIsLoaded] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
-  const [inventory, setInventory] = useState(4);
+  const [inventory, setInventory] = useState(0); // Empezamos en 0 para cuenta nueva
   const [lastInjectionDate, setLastInjectionDate] = useState(formattedLastInj);
   const [nextLeg, setNextLeg] = useState('Derecha');
   const [nextAppointment, setNextAppointment] = useState('');
   const [injectionInterval, setInjectionInterval] = useState(9);
-  const [kardex, setKardex] = useState([
-    { id: 1, date: formattedLastInj, type: 'Aplicación', detail: 'Pierna Izquierda', qty: -1, balance: 4 }
-  ]);
+  const [kardex, setKardex] = useState([]);
 
   const [isEditingInterval, setIsEditingInterval] = useState(false);
   const [addAmount, setAddAmount] = useState('');
@@ -54,30 +158,22 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState('');
   const [undoConfirmId, setUndoConfirmId] = useState(null);
 
-  // --- CONEXIÓN A FIREBASE ---
-  
+  // --- MANEJO DE AUTENTICACIÓN ---
   useEffect(() => {
     if (!auth) return;
-    const initAuth = async () => {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (error) {
-        console.error("Error de autenticación:", error);
-        setIsLoaded(true);
-      }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, setUser);
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      // Si no hay usuario, igual marcamos como cargado para mostrar el LoginScreen
+      if (!currentUser) setIsLoaded(true); 
+    });
     return () => unsubscribe();
   }, []);
 
+  // --- CARGA DE DATOS DESDE FIRESTORE ---
   useEffect(() => {
     if (!user || !db) return;
 
+    setIsLoaded(false); // Mostrar loading al cambiar de usuario
     const docRef = doc(db, 'artifacts', safeAppId, 'users', user.uid, 'appData', 'state');
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -111,8 +207,15 @@ export default function App() {
     }
   };
 
-  // --- LÓGICA Y CÁLCULOS PRINCIPALES ---
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Error al cerrar sesión", error);
+    }
+  };
 
+  // --- LÓGICA Y CÁLCULOS PRINCIPALES ---
   const calculateNextInjection = (lastDateStr, interval) => {
     const baseStr = lastDateStr || new Date().toISOString().split('T')[0];
     const date = new Date(baseStr + 'T12:00:00'); 
@@ -146,23 +249,16 @@ export default function App() {
     statusText = `Mañana`;
   }
 
-  // --- CÁLCULO: ¿HASTA CUÁNDO ALCANZA EL INVENTARIO? ---
   let depletionDateText = "Sin inventario";
   if (inventory > 0) {
     const depletionDate = new Date(nextInjectionDate);
-    // Se calcula sumando a la próxima inyección: (cantidad_restante - 1) * intervalo
-    // Porque la primera dosis ya está asignada a la 'nextInjectionDate'
     depletionDate.setDate(depletionDate.getDate() + ((inventory - 1) * injectionInterval));
     depletionDateText = depletionDate.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
   }
 
-  // --- FUNCIÓN: AGENDAR EN GOOGLE CALENDAR ---
   const handleAddToCalendar = () => {
-    // Formatear fechas para Google Calendar (YYYYMMDD) - Evento de todo el día
     const pad = (n) => n < 10 ? '0' + n : n;
     const startStr = `${nextInjectionDate.getFullYear()}${pad(nextInjectionDate.getMonth() + 1)}${pad(nextInjectionDate.getDate())}`;
-    
-    // El evento de todo el día debe terminar al día siguiente
     const endDate = new Date(nextInjectionDate);
     endDate.setDate(endDate.getDate() + 1);
     const endStr = `${endDate.getFullYear()}${pad(endDate.getMonth() + 1)}${pad(endDate.getDate())}`;
@@ -170,14 +266,9 @@ export default function App() {
     const title = encodeURIComponent(`💉 Inyección: Pierna ${nextLeg}`);
     const details = encodeURIComponent(`Recuerda registrar la inyección en tu app InyectTracker.\n\nToca en la: Pierna ${nextLeg}.`);
     
-    // Generar enlace
     const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startStr}/${endStr}&details=${details}`;
-    
-    // Abrir en nueva pestaña (En el celular abrirá la app o la web)
     window.open(url, '_blank');
   };
-
-  // --- FUNCIONES DE ACCIÓN SECUNDARIAS ---
 
   const handleApplyInjection = () => {
     if (inventory <= 0) {
@@ -320,15 +411,22 @@ export default function App() {
     return d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
+  // --- RENDERIZADO CONDICIONAL ---
   if (!isLoaded) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-500">
         <Loader2 className="w-8 h-8 animate-spin mb-4 text-blue-500" />
-        <p className="font-medium">Cargando tus datos de salud...</p>
+        <p className="font-medium">Cargando...</p>
       </div>
     );
   }
 
+  // Si no hay sesión iniciada, mostramos la pantalla de Login
+  if (!user) {
+    return <LoginScreen auth={auth} />;
+  }
+
+  // Si hay sesión iniciada, mostramos el Dashboard Principal
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-10">
       <header className="bg-blue-600 text-white p-4 shadow-md sticky top-0 z-10">
@@ -337,23 +435,23 @@ export default function App() {
             <Activity className="w-6 h-6" />
             <h1 className="text-xl font-bold tracking-wide">InyectTracker</h1>
           </div>
-          <div className="flex items-center gap-2 text-xs font-medium bg-blue-700/50 px-2.5 py-1.5 rounded-full">
-            {isSyncing && (
-              <span className="flex items-center gap-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Guardando...</span>
-            )}
-            {!isSyncing && user && (
-              <span className="flex items-center gap-1"><Cloud className="w-3.5 h-3.5 text-blue-200" /> Sincronizado</span>
-            )}
-            {!isSyncing && !user && (
-              <span className="flex items-center gap-1"><CloudOff className="w-3.5 h-3.5 text-red-300" /> Local</span>
-            )}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 text-xs font-medium bg-blue-700/50 px-2.5 py-1.5 rounded-full">
+              {isSyncing ? (
+                <span className="flex items-center gap-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Guardando...</span>
+              ) : (
+                <span className="flex items-center gap-1"><Cloud className="w-3.5 h-3.5 text-blue-200" /> Sincronizado</span>
+              )}
+            </div>
+            {/* BOTÓN DE CERRAR SESIÓN */}
+            <button onClick={handleLogout} className="p-1.5 bg-blue-700/50 hover:bg-blue-800 rounded-full transition-colors" title="Cerrar sesión">
+              <LogOut className="w-4 h-4 text-blue-100" />
+            </button>
           </div>
         </div>
       </header>
 
       <main className="max-w-md mx-auto p-4 space-y-6 mt-2">
-        
-        {/* MENSAJE DE ERROR */}
         {errorMsg && (
           <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-xl shadow-sm flex items-start justify-between">
             <div className="flex items-start gap-3">
@@ -366,7 +464,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Próxima Inyección */}
         <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="p-5 border-b border-slate-100 relative">
             <div className="flex justify-between items-center mb-4">
@@ -407,7 +504,6 @@ export default function App() {
               {formatDate(nextInjectionDate)}
             </div>
 
-            {/* BOTÓN NUEVO: AGENDAR EN GOOGLE CALENDAR */}
             <button 
               onClick={handleAddToCalendar}
               className="mt-4 w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-2.5 rounded-xl text-sm flex justify-center items-center gap-2 transition-colors border border-slate-200"
@@ -456,7 +552,6 @@ export default function App() {
         </section>
 
         <div className="grid grid-cols-2 gap-4">
-          {/* INVENTARIO CON FECHA DE ALCANCE */}
           <section className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col justify-between">
             <div>
               <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
@@ -468,14 +563,12 @@ export default function App() {
               </div>
             </div>
             
-            {/* NUEVA FECHA HASTA CUANDO ALCANZAN LAS DOSIS */}
             <div className="mt-3 pt-3 border-t border-slate-100">
                <p className="text-[10px] text-slate-400 uppercase tracking-wide font-semibold">Alcanzan hasta</p>
                <p className="text-sm font-bold text-slate-700 capitalize mt-0.5">{depletionDateText}</p>
             </div>
           </section>
 
-          {/* CITA MÉDICA */}
           <section className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col justify-between">
             <div>
               <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
@@ -494,7 +587,6 @@ export default function App() {
           </section>
         </div>
 
-        {/* AGREGAR AL INVENTARIO */}
         <section className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
           <h2 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
             <Plus className="w-4 h-4 text-blue-600" /> Ingresar nuevas inyecciones
@@ -510,7 +602,6 @@ export default function App() {
           </form>
         </section>
 
-        {/* KARDEX / HISTORIAL */}
         <section className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
           <h2 className="text-sm font-semibold text-slate-700 mb-4 flex items-center gap-2">
             <History className="w-4 h-4 text-blue-600" /> Historial / Kardex
@@ -540,7 +631,6 @@ export default function App() {
                         <p className="text-[10px] text-slate-400 uppercase tracking-wide">Stock: {log.balance}</p>
                       </div>
                       
-                      {/* BOTÓN DESHACER */}
                       {index === 0 && undoConfirmId !== log.id && (
                         <button 
                           onClick={() => setUndoConfirmId(log.id)} 
@@ -553,7 +643,6 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Confirmación de Deshacer */}
                   {index === 0 && undoConfirmId === log.id && (
                     <div className="mt-3 pt-3 border-t border-slate-200 flex items-center justify-between bg-red-50 p-2 rounded-lg">
                       <span className="text-xs font-medium text-red-600 flex items-center gap-1">
